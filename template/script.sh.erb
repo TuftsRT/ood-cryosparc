@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# --------------------------------------------------
+# Load OOD port utilities (FIXES YOUR ERROR)
+# --------------------------------------------------
+module load singularity
+############################################
+# Paths & Variables
+############################################
+export ssd_path="/tmp"
+export cryosparc_root="$(echo "<%= context.cryosparc_dir %>" | xargs)"
+export cryosparc_run="${cryosparc_root}/run"
+export cryosparc_version="<%= context.version %>"
+export cryosparc_database="${cryosparc_root}/cryosparc_database_${cryosparc_version}"
+export cryosparc_cache="${cryosparc_root}/cryosparc_cache"
+export home_license="$HOME/.cryosparc"
+export cryosparc_version="<%= context.version %>"
+export login_email="<%= context.login_email %>"
+export cryosparc_image="/cluster/tufts/apps/container/biocontainers/images/cryosparc_<%= context.version %>.sif"
+export CRYOSPARC_DB_STARTUP_TIMEOUT=300
+export CRYOSPARC_MASTER_HOSTNAME=$(hostname -s)
+cpus="<%= context.num_cores %>"
+
+# --------------------------------------------------
+# GPU handling
+# --------------------------------------------------
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+    usegpu="--gpus $CUDA_VISIBLE_DEVICES"
+    nvidia="--nv"
+    echo "GPU support enabled. Using CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
+else
+    usegpu=""
+    nvidia=""
+    echo "No GPU support enabled. CUDA_VISIBLE_DEVICES is not set."
+fi
+export usegpu
+export nvidia
+
+
+############################################
+# Handle license
+############################################
+if [[ ! -d "${HOME}/.cryosparc" ]]; then
+    echo "Cryosparc hidden directory does not exist. Creating it..."
+    mkdir -p "${HOME}/.cryosparc"
+fi
+echo "<%= context.cryosparc_license_id.strip %>" > "${HOME}/.cryosparc/license_id"
+login_password="<%= context.cryosparc_license_id[0, 8] %>"
+
+
+
+#########################################################
+# Define the base command for running cryosparc within the instance
+############################################
+cryosparc_singularity_command=(
+    singularity exec
+    $nvidia
+    -B "$home_license:/cryosparc_license"
+    -B "$cryosparc_run:/cryosparc/cryosparc_master/run"
+    -B "$cryosparc_database:/cryosparc_database"
+    -B "$cryosparc_cache:/cryosparc_cache"
+    "$cryosparc_image"
+)
+
+#########################################################
+# Clean up any previous instances of cryosparc
+#  that may be running or have left lock files
+#########################################################
+### remove lock file in /tmp
+if ls /tmp/cryosparc-*sock 1> /dev/null 2>&1; then
+        lockfiles=`ls /tmp/cryosparc-*sock`
+        if [[ $lockfiles != *"cannot access"* ]];then
+                for i in $lockfiles
+                do
+                        owner=`stat -c %U $i`
+                        if [[ $owner == $USER ]]
+                        then
+                                echo "  Removing file $i"
+                                rm $i
+                                rm /tmp/mongodb*sock
+                        else
+                                echo "  There is a $i lockfile left by $owner from a previous session. "
+                                echo "  CryoSparc cannot obtain the database socket because this file can not be delete by you. "
+                                echo "  Please ask $owner to delete $i on $master_node ."
+                                echo "  Unfortunately, I have to quit."
+                                exit 1
+                        fi
+                done
+        fi
+else
+        echo "  No lock founded. "
+fi
+
+### Remove lock files in $cryosparc_database
+if ls $cryosparc_database/*.lock 1> /dev/null 2>&1; then
+        lockfiles=`ls $cryosparc_database/*.lock`
+        if [[ $lockfiles != *"cannot access"* ]];then
+                for i in $lockfiles
+                do
+                        echo "  Removing file $i"
+                                rm $i
+                done
+        fi
+else
+        echo "  No lock founded in $cryosparc_database. "
+fi
+
+echo "Cleaning up $cryosparc_run"
+if [ -d "$cryosparc_run" ]; then
+        sleep 10
+        echo "  Removing $cryosparc_run"
+        rm -rf "$cryosparc_run"
+else
+        echo "  No $cryosparc_run found."
+fi
+
+#########################################################
+# Setup CryoSPARC Directory
+############################################
+## set up run directory and initialize if not already done
+echo "Setting up CryoSPARC run directory at $cryosparc_run"
+mkdir -p "$cryosparc_run"
+echo "Copying default CryoSPARC run files from container image..."
+# Copy default run config
+singularity exec "$cryosparc_image" \
+        cp -r /cryosparc/cryosparc_master/run/. "$cryosparc_run/"
+        # Update the port and force hostname bypass for cluster nodes
+        sed -i "s/30000/${port}/" "$cryosparc_run/config.sh"
+        echo "export CRYOSPARC_FORCE_HOSTNAME=true" >> "$cryosparc_run/config.sh"
+        echo "export CRYOSPARC_FORCE_USER=true" >> "$cryosparc_run/config.sh"
+
+
+init_marker="$cryosparc_root/.initialized"
+
+if [ ! -f "$init_marker" ]; then
+    echo "=== First time CryoSPARC initialization"
+    mkdir -p "$cryosparc_root"
+    mkdir -p "$cryosparc_cache"
+    mkdir -p "$cryosparc_database"
+
+    # Start services
+    "${cryosparc_singularity_command[@]}" cryosparcm start
+    sleep 5
+
+    "${cryosparc_singularity_command[@]}" cryosparcm database check
+
+    "${cryosparc_singularity_command[@]}" cryosparcm user create \
+        --email "$login_email" \
+        --password "$login_password" \
+        --username "admin" \
+        --firstname "admin" \
+        --lastname "admin"
+
+    # Mark initialization success
+    touch "$init_marker"
+
+else
+    echo "=== Existing CryoSPARC detected"
+
+    # Remove stale Mongo lock files
+    find "$cryosparc_database" -name "*.lock" -delete || true
+
+    # Remove stale sockets
+    find /tmp -maxdepth 1 -name "cryosparc-*sock" -user "$USER" -delete || true
+    find /tmp -maxdepth 1 -name "mongodb-*sock" -user "$USER" -delete || true
+
+    rm -f "$cryosparc_database/mongod.lock"
+
+    export CRYOSPARC_MASTER_HOSTNAME=$(hostname)
+
+    # Stop any orphaned processes 
+    "${cryosparc_singularity_command[@]}" cryosparcm start || true
+
+    # Start sequence
+    "${cryosparc_singularity_command[@]}" cryosparcm start database
+    sleep 20
+    "${cryosparc_singularity_command[@]}" cryosparcm database fixport || true
+    "${cryosparc_singularity_command[@]}" cryosparcm restart
+    sleep 5
+
+    # Remove stale worker nodes
+    "${cryosparc_singularity_command[@]}" remove_hosts.sh || true
+
+    "${cryosparc_singularity_command[@]}" cryosparcm status
+fi
+
+
+# connect current compute node
+"${cryosparc_singularity_command[@]}" cryosparcw connect \
+    --worker "$HOSTNAME" \
+    --master "$HOSTNAME" \
+    --port $port \
+    --ssdpath /tmp \
+    --lane default \
+    --newlane \
+    --cpus $cpus \
+    $usegpu
+
+# Simple loop that sleeps for 60 seconds at a time
+# This keeps the script (and the Slurm job) alive
+while true; do
+  sleep 60
+done

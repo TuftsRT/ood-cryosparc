@@ -1,0 +1,7 @@
+---
+name: CryoSPARC
+category: Bioinformatics
+subcategory: Interactive Apps 
+role: batch_connect
+description: |
+    This app will allow users to start CryoSPARC jobs on the cluster.

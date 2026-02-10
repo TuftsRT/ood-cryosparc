@@ -1,0 +1,16 @@
+<%
+  url = "http://#{host}.pax.tufts.edu:#{port}"
+%>
+
+<div class="alert alert-info mb-3">
+  <strong><i class="fa fa-info-circle"></i> Login Credentials:</strong> 
+  <p class="mb-0">Use these credentials once the CryoSPARC interface loads:</p>
+  <ul class="mb-0">
+    <li><strong>Email:</strong> Your Provided Login Email</li>
+    <li><strong>Password:</strong> the first 8 characters of your CryoSPARC license ID</li>
+  </ul>
+</div>
+
+<a class="btn btn-primary" href="<%= url %>" target="_blank">
+  <i class="fa fa-external-link"></i> Connect to CryoSPARC
+</a>
