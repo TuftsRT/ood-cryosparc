@@ -4,7 +4,7 @@ cluster: "pax"
 <% host = `hostname`.strip %>
 batch_connect:
   template: basic
-  timeout: <%= [((walltime.blank? ? 1.0 : walltime.to_f) * 3600.0).to_i - 60, 600].max %>
+  timeout: <%= [((bc_num_hours.blank? ? 1.0 : bc_num_hours.to_f) * 3600.0).to_i - 60, 600].max %>
 
 script:
   email_on_started: true

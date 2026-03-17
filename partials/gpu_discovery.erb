@@ -449,9 +449,9 @@ end
 # =============================================================================
 # DEBUG LOGGING - Set to true to enable logging to ~/javi_gpu_debug.log
 # =============================================================================
-DEBUG_GPU_DISCOVERY = false
+#DEBUG_GPU_DISCOVERY2 = false
 
-if DEBUG_GPU_DISCOVERY
+if false
   begin
     debug_log = File.join(ENV['HOME'], 'javi_gpu_debug.log')
     File.open(debug_log, 'a') do |f|
