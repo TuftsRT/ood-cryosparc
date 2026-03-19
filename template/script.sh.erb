@@ -6,7 +6,7 @@ module load singularity
 ############################################
 # Paths & Variables
 ############################################
-export ssd_path="/tmp"
+export ssd_root="$(echo "<%= context.ssd_path.blank? ? '/tmp' : context.ssd_path %>" | xargs)"
 export cryosparc_root="$(echo "<%= context.cryosparc_dir %>" | xargs)"
 export cryosparc_run="${cryosparc_root}/run"
 export cryosparc_version="<%= context.version %>"
@@ -18,7 +18,10 @@ export login_email="<%= context.login_email %>"
 export cryosparc_image="/cluster/tufts/apps/container/biocontainers/images/cryosparc_<%= context.version %>.sif"
 export CRYOSPARC_DB_STARTUP_TIMEOUT=300
 export CRYOSPARC_MASTER_HOSTNAME=$(hostname -s)
+export ssd_path="${ssd_root%/}/cryosparc-cache-${SLURM_JOB_ID:-${HOSTNAME}}"
 cpus="<%= context.num_cores %>"
+
+mkdir -p "$ssd_path"
 
 # --------------------------------------------------
 # GPU handling
@@ -60,6 +63,28 @@ cryosparc_singularity_command=(
     -B "$cryosparc_cache:/cryosparc_cache"
     "$cryosparc_image"
 )
+
+remove_scheduler_targets() {
+    local targets_output=""
+    local current_host
+    current_host="$(hostname -s)"
+
+    targets_output=$("${cryosparc_singularity_command[@]}" cryosparcm cli "list(db.sched_config.find({'name': 'targets'}, {'_id': 0}))" 2>/dev/null || true)
+    if [ -z "$targets_output" ]; then
+        echo "No scheduler target config found."
+        return 0
+    fi
+
+    printf '%s\n' "$targets_output" \
+        | grep -Eo "'hostname': '[^']+'|\"hostname\": \"[^\"]+\"" \
+        | sed -E "s/'hostname': '([^']+)'/\1/; s/\"hostname\": \"([^\"]+)\"/\1/" \
+        | awk -v current_host="$current_host" 'NF && $0 != current_host && !seen[$0]++' \
+        | while read -r worker; do
+            echo "Removing stale worker $worker"
+            "${cryosparc_singularity_command[@]}" cryosparcm cli "db.sched_config.update_one({'name': 'targets'}, {'\$pull': {'value': {'hostname': '${worker}'}}}).modified_count" 2>/dev/null \
+              || true
+        done
+}
 
 #########################################################
 # Clean up any previous instances of cryosparc
@@ -129,7 +154,7 @@ singularity exec "$cryosparc_image" \
         echo "export CRYOSPARC_FORCE_USER=true" >> "$cryosparc_run/config.sh"
 
 
-init_marker="$cryosparc_root/.initialized"
+init_marker="$cryosparc_root/initialized"
 
 if [ ! -f "$init_marker" ]; then
     echo "=== First time CryoSPARC initialization"
@@ -167,21 +192,23 @@ else
 
     export CRYOSPARC_MASTER_HOSTNAME=$(hostname)
 
-    # Stop any orphaned processes 
-    "${cryosparc_singularity_command[@]}" cryosparcm start || true
+	    # This first start attempt commonly emits a noisy replica-set traceback before
+	    # database fixport corrects the recovered state. Suppress that expected output.
+	    "${cryosparc_singularity_command[@]}" cryosparcm start >/dev/null 2>&1 || true
 
     # Start sequence
     "${cryosparc_singularity_command[@]}" cryosparcm start database
     sleep 20
-    "${cryosparc_singularity_command[@]}" cryosparcm database fixport || true
-    "${cryosparc_singularity_command[@]}" cryosparcm restart
-    sleep 5
+	    "${cryosparc_singularity_command[@]}" cryosparcm database fixport || true
+	    "${cryosparc_singularity_command[@]}" cryosparcm restart
+	    sleep 5
+	
+	    remove_scheduler_targets
+	    "${cryosparc_singularity_command[@]}" cryosparcm restart || true
+	    sleep 5
 
-    # Remove stale worker nodes
-    "${cryosparc_singularity_command[@]}" remove_hosts.sh || true
-
-    "${cryosparc_singularity_command[@]}" cryosparcm status
-fi
+	    "${cryosparc_singularity_command[@]}" cryosparcm status
+	fi
 
 
 # connect current compute node
@@ -189,7 +216,7 @@ fi
     --worker "$HOSTNAME" \
     --master "$HOSTNAME" \
     --port $port \
-    --ssdpath /tmp \
+    --ssdpath "$ssd_path" \
     --lane default \
     --newlane \
     --cpus $cpus \

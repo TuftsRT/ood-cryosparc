@@ -1,5 +1,6 @@
 #!/bin/bash
 module load singularity
+export ssd_root="$(echo "<%= context.ssd_path.blank? ? '/tmp' : context.ssd_path %>" | xargs)"
 export cryosparc_root="$(echo "<%= context.cryosparc_dir %>" | xargs)"
 export cryosparc_run="${cryosparc_root}/run"
 export cryosparc_version="<%= context.version %>"
@@ -7,6 +8,7 @@ export cryosparc_database="${cryosparc_root}/cryosparc_database_${cryosparc_vers
 export cryosparc_image="/cluster/tufts/apps/container/biocontainers/images/cryosparc_${cryosparc_version}.sif"
 export cryosparc_cache="${cryosparc_root}/cryosparc_cache"
 export home_license="$HOME/.cryosparc"
+export ssd_path="${ssd_root%/}/cryosparc-cache-${SLURM_JOB_ID:-${HOSTNAME}}"
 
 # --------------------------------------------------
 # GPU handling
@@ -23,24 +25,46 @@ fi
 export usegpu
 export nvidia
 
+cryosparc_singularity_command=(
+    singularity exec
+    $nvidia
+    -B "$home_license:/cryosparc_license"
+    -B "$cryosparc_run:/cryosparc/cryosparc_master/run"
+    -B "$cryosparc_database:/cryosparc_database"
+    -B "$cryosparc_cache:/cryosparc_cache"
+    "$cryosparc_image"
+)
+
+remove_scheduler_targets() {
+    local targets_output=""
+    local current_host
+    current_host="$(hostname -s)"
+
+    targets_output=$("${cryosparc_singularity_command[@]}" cryosparcm cli "list(db.sched_config.find({'name': 'targets'}, {'_id': 0}))" 2>/dev/null || true)
+    if [ -z "$targets_output" ]; then
+        echo "No scheduler target config found."
+        return 0
+    fi
+
+    printf '%s\n' "$targets_output" \
+        | grep -Eo "'hostname': '[^']+'|\"hostname\": \"[^\"]+\"" \
+        | sed -E "s/'hostname': '([^']+)'/\1/; s/\"hostname\": \"([^\"]+)\"/\1/" \
+        | awk -v current_host="$current_host" 'NF && $0 != current_host && !seen[$0]++' \
+        | while read -r worker; do
+            echo "Removing stale worker $worker"
+            "${cryosparc_singularity_command[@]}" cryosparcm cli "db.sched_config.update_one({'name': 'targets'}, {'\$pull': {'value': {'hostname': '${worker}'}}}).modified_count" 2>/dev/null \
+              || true
+        done
+}
+
 ## remove_workers
 echo "the container image is: $cryosparc_image"
-singularity exec $nvidia \
-    -B "$home_license:/cryosparc_license" \
-    -B "$cryosparc_run:/cryosparc/cryosparc_master/run" \
-    -B "$cryosparc_database:/cryosparc_database" \
-    -B "$cryosparc_cache:/cryosparc_cache" \
-    $cryosparc_image \
-  cryosparcm cli "db.scheduler_targets.remove_all()"
+remove_scheduler_targets
+"${cryosparc_singularity_command[@]}" cryosparcm restart || true
 sleep 5
 
 ## shutdown_master
-singularity exec --nv $nvidia \
-    -B "$home_license:/cryosparc_license" \
-    -B "$cryosparc_run:/cryosparc/cryosparc_master/run" \
-    -B "$cryosparc_database:/cryosparc_database" \
-    -B "$cryosparc_cache:/cryosparc_cache" \
-    "$cryosparc_image"  $cryosparc_image cryosparcm stop
+"${cryosparc_singularity_command[@]}" cryosparcm stop
 
 # Kill any orphaned processes belonging to you on this node
 pkill -u "$USER" -f "cryosparc" || true
@@ -92,4 +116,12 @@ if [ -d "$cryosparc_run" ]; then
         rm -rf "$cryosparc_run"
 else
         echo "  No $cryosparc_run found."
+fi
+
+echo "Cleaning up SSD cache path $ssd_path"
+if [ -d "$ssd_path" ]; then
+        echo "  Removing $ssd_path"
+        rm -rf "$ssd_path"
+else
+        echo "  No $ssd_path found."
 fi
