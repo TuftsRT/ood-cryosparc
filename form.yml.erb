@@ -6,7 +6,7 @@ bc_dynamic_js: true
 <%= ERB.new(File.read(File.expand_path('partials/gpu_discovery.erb', __dir__))).result(binding) %>
 
 attributes:
-<%= File.read("/etc/ood/config/apps/dashboard/batch_connect/partials/all_partition.yml").indent(2) %>
+<%= generate_partition_field.indent(2) %>  
 <%= generate_num_cores_field.indent(2) %>
 <%= generate_num_memory_field.indent(2) %>
 <%= generate_gpu_type_field.indent(2) %>
