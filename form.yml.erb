@@ -55,6 +55,15 @@ attributes:
       <strong>Default:</strong> <code>/tmp</code><br/>
       <span class="text-warning"><strong>Warning:</strong> <code>/tmp</code> has limited storage and may be too small for large jobs.</span>
 
+  num_gpus:
+    widget: "number_field"
+    label: "Number of GPUs"
+    value: 1
+    min: 1
+    max: 4
+    step: 1
+    help: "Number of GPUs to allocate (maximum 4)."
+
   version:
     label: Software Version
     widget: select
@@ -64,9 +73,10 @@ attributes:
 form:
   - partition
   - bc_num_hours
-  - num_cores 
+  - num_cores
   - num_memory
   - gpu_type
+  - num_gpus
   - version
   - login_email
   - cryosparc_license_id

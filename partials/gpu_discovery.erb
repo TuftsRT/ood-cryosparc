@@ -262,21 +262,22 @@ if @detected_types.empty? && @a100_sizes.empty?
   # No GPUs detected anywhere: only show 'none'
   @options << ['none', 'none']
 else
-  # GPUs detected: show 'any' and concrete GPU types, but not 'none'
-  @options << ['any',  'any']
+  # Build concrete GPU type entries first
+  concrete = []
+  concrete << [@label_map['a100_40'], 'a100_40'] if @a100_sizes.include?('a100_40')
+  concrete << [@label_map['a100_80'], 'a100_80'] if @a100_sizes.include?('a100_80')
 
-  # Add A100 size-specific entries first if discovered
-  @options << [@label_map['a100_40'], 'a100_40'] if @a100_sizes.include?('a100_40')
-  @options << [@label_map['a100_80'], 'a100_80'] if @a100_sizes.include?('a100_80')
-
-  # Then add remaining detected types
   remaining = @detected_types.to_a
   remaining.sort_by! { |t| priority.fetch(t, 999) }
   remaining.each do |t|
-    next if %w[a100_40 a100_80].include?(t) # already added above
+    next if %w[a100_40 a100_80].include?(t)
     label = @label_map[t] || t.upcase
-    @options << [label, t]
+    concrete << [label, t]
   end
+
+  # Only prepend 'any' when there are multiple GPU types to choose from
+  @options << ['any', 'any'] if concrete.length > 1
+  @options.concat(concrete)
 end
 
 # Build partition-aware options map using the same labeling/ordering rules
@@ -290,27 +291,23 @@ build_opts = lambda do |types_set, a100_size_set|
     # No GPUs detected in this partition: only show 'none'
     local << ['none', 'none']
   else
-    # GPUs detected in this partition: show 'any' and concrete GPU types
-    local << ['any',  'any']
-
-    # Prefer size-specific A100 entries
-    if a100_size_set.include?('a100_40')
-      local << [@label_map['a100_40'], 'a100_40']
-    end
-    if a100_size_set.include?('a100_80')
-      local << [@label_map['a100_80'], 'a100_80']
-    end
+    # Build concrete GPU type entries first
+    concrete = []
+    concrete << [@label_map['a100_40'], 'a100_40'] if a100_size_set.include?('a100_40')
+    concrete << [@label_map['a100_80'], 'a100_80'] if a100_size_set.include?('a100_80')
 
     remaining_local = types_set.to_a
-    if !a100_size_set.empty?
-      remaining_local.delete('a100')
-    end
+    remaining_local.delete('a100') unless a100_size_set.empty?
     remaining_local.sort_by! { |t| priority.fetch(t, 999) }
     remaining_local.each do |t|
       next if %w[a100_40 a100_80].include?(t)
       label = @label_map[t] || t.upcase
-      local << [label, t]
+      concrete << [label, t]
     end
+
+    # Only prepend 'any' when there are multiple GPU types to choose from
+    local << ['any', 'any'] if concrete.length > 1
+    local.concat(concrete)
   end
   local
 end

@@ -128,14 +128,20 @@ function repopulateGpuTypesForPartition() {
   var partitionHasGpus = map && Object.prototype.hasOwnProperty.call(map, selected);
   var gpuFormGroup = gpuTypeSelect.closest('.mb-3') || gpuTypeSelect.closest('.form-group');
 
+  var numGpusInput = document.getElementById('batch_connect_session_context_num_gpus');
+  var numGpusFormGroup = numGpusInput ? (numGpusInput.closest('.mb-3') || numGpusInput.closest('.form-group')) : null;
+
   if (!partitionHasGpus) {
-    // Partition has no GPUs — hide the GPU field and set to 'none'
+    // Partition has no GPUs — hide the GPU fields and set to 'none'
     try {
       console.log('[gpu] repopulate: partition "' + selected + '" has no GPUs, hiding gpu_type field');
     } catch (_) {}
 
     if (gpuFormGroup) {
       gpuFormGroup.style.display = 'none';
+    }
+    if (numGpusFormGroup) {
+      numGpusFormGroup.style.display = 'none';
     }
 
     // Clear options and set a 'none' value so cores/memory lookups use the 'none' GPU type
@@ -150,9 +156,12 @@ function repopulateGpuTypesForPartition() {
     return;
   }
 
-  // Partition has GPUs — show the field
+  // Partition has GPUs — show the fields
   if (gpuFormGroup) {
     gpuFormGroup.style.display = '';
+  }
+  if (numGpusFormGroup) {
+    numGpusFormGroup.style.display = '';
   }
 
   var usedKey = selected;
