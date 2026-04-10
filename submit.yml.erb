@@ -24,14 +24,14 @@ script:
 %>
 <% unless skip_gres %>
   <% if gpu_type == "a100_40" %>
-    - "--gres=gpu:a100:1"
+    - "--gres=gpu:a100:<%= num_gpus %>"
     - "--constraint=a100-40G"
   <% elsif gpu_type == "a100_80" %>
-    - "--gres=gpu:a100:1"
+    - "--gres=gpu:a100:<%= num_gpus %>"
     - "--constraint=a100-80G"
   <% elsif gpu_type == "any" %>
-    - "--gres=gpu:1"
+    - "--gres=gpu:<%= num_gpus %>"
   <% else %>
-    - "--gres=gpu:<%= gpu_type %>:1"
+    - "--gres=gpu:<%= gpu_type %>:<%= num_gpus %>"
   <% end %>
 <% end %>
