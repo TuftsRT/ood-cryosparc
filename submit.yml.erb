@@ -17,6 +17,11 @@ script:
     - "--mem=<%= num_memory %>G"
     - "--nodes=1"
     - "--partition=<%= partition %>"
+<% if partition == "preempt" %>
+    - "--qos=preempt"
+<% elsif !%w[batch gpu preempt].include?(partition) %>
+    - "--qos=normal-contrib"
+<% end %>
 <%
   # gpu_type from resource_discovery.erb is a feature variant like "a100-40G".
   # The gres name is the part before the first "-"; the full variant is a
