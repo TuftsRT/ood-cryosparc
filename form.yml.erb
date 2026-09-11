@@ -23,10 +23,18 @@ attributes:
     checked_value: "interactive"
     unchecked_value: "normal"
 <%= generate_partition_field.indent(2) %>
+  bc_num_hours:
+    label: "Number of Hours"
+    wiget: 'number_field'
+    help: |
+      Up to 48 hours in public batch,gpu,and preempt partitions, up to 168 hours in contrib lab partitions.
+    min: 1
+    max: 168
+    id: 'bc_num_hours'
 <%= generate_num_cores_field.indent(2) %>
 <%= generate_num_memory_field.indent(2) %>
 <%= generate_gpu_type_field.indent(2) %>
-<%= generate_num_hours_field.indent(2) %>
+
 
   login_email:
     label:  "Email (for CryoSPARC login)"
