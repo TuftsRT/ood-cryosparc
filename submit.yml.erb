@@ -17,11 +17,6 @@ script:
     - "--mem=<%= num_memory %>G"
     - "--nodes=1"
     - "--partition=<%= partition %>"
-<% if partition == "preempt" %>
-    - "--qos=preempt"
-<% elsif !%w[batch gpu preempt].include?(partition) %>
-    - "--qos=normal-contrib"
-<% end %>
 <%
   # gpu_type from resource_discovery.erb is a feature variant like "a100-40G".
   # The gres name is the part before the first "-"; the full variant is a
@@ -37,6 +32,12 @@ script:
     - "--constraint=<%= gpu_type %>"
   <% end %>
 <% end %>
-    <%- if defined?(ta_qos) && ta_qos == "interactive" -%>
-    - "--qos=<%= ta_qos %>"
-    <%- end -%>
+<%-
+  # QOS rules live in the shared partition_qos.rb (preempt -> preempt,
+  # lab partitions -> normal-contrib, interactive only where allowed).
+  load '/etc/ood/config/apps/dashboard/batch_connect/partials/partition_qos.rb'
+  qos = PartitionQos.qos_for(partition, (ta_qos if defined?(ta_qos)))
+-%>
+<%- if qos -%>
+    - "--qos=<%= qos %>"
+<%- end -%>
