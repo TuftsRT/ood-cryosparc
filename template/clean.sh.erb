@@ -1,7 +1,7 @@
 #!/bin/bash
 module load singularity
-export ssd_root="$(echo "<%= context.ssd_path.blank? ? '/tmp' : context.ssd_path %>" | xargs)"
-export cryosparc_root="$(echo "<%= context.cryosparc_dir %>" | xargs)"
+export ssd_root="<%= context.ssd_path.blank? ? '/tmp' : context.ssd_path.to_s.strip %>"
+export cryosparc_root="<%= context.cryosparc_dir.to_s.strip %>"
 export cryosparc_run="${cryosparc_root}/run"
 export cryosparc_version="<%= context.version %>"
 export cryosparc_database="${cryosparc_root}/cryosparc_database_${cryosparc_version}"

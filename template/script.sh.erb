@@ -6,15 +6,15 @@ module load singularity
 ############################################
 # Paths & Variables
 ############################################
-export ssd_root="$(echo "<%= context.ssd_path.blank? ? '/tmp' : context.ssd_path %>" | xargs)"
-export cryosparc_root="$(echo "<%= context.cryosparc_dir %>" | xargs)"
+export ssd_root="<%= context.ssd_path.blank? ? '/tmp' : context.ssd_path.to_s.strip %>"
+export cryosparc_root="<%= context.cryosparc_dir.to_s.strip %>"
 export cryosparc_run="${cryosparc_root}/run"
 export cryosparc_version="<%= context.version %>"
 export cryosparc_database="${cryosparc_root}/cryosparc_database_${cryosparc_version}"
 export cryosparc_cache="${cryosparc_root}/cryosparc_cache"
 export home_license="$HOME/.cryosparc"
 export cryosparc_version="<%= context.version %>"
-export login_email="<%= context.login_email %>"
+export login_email="<%= context.login_email.to_s.strip %>"
 export cryosparc_image="/cluster/tufts/apps/container/biocontainers/images/cryosparc_<%= context.version %>.sif"
 export CRYOSPARC_DB_STARTUP_TIMEOUT=300
 export CRYOSPARC_MASTER_HOSTNAME=$(hostname -s)
@@ -46,8 +46,8 @@ if [[ ! -d "${HOME}/.cryosparc" ]]; then
     echo "Cryosparc hidden directory does not exist. Creating it..."
     mkdir -p "${HOME}/.cryosparc"
 fi
-echo "<%= context.cryosparc_license_id.strip %>" > "${HOME}/.cryosparc/license_id"
-login_password="<%= context.cryosparc_license_id[0, 8] %>"
+echo "<%= context.cryosparc_license_id.to_s.strip %>" > "${HOME}/.cryosparc/license_id"
+login_password="<%= context.cryosparc_license_id.to_s.strip[0, 8] %>"
 
 
 
